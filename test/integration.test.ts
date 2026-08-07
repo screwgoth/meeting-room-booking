@@ -249,6 +249,59 @@ describe('my-bookings + cancel (#8, F7)', () => {
   });
 });
 
+describe('soft-delete guards the write path (NF5)', () => {
+  it('rejects booking a room under a soft-deleted floor', async () => {
+    const cookie = await t.login('alice', 'alice1234');
+    // Fresh floor + room so we can deactivate the floor in isolation.
+    const floor = await t.db.query<{ id: number }>(
+      `INSERT INTO floor (office_id, name) VALUES ($1, 'Temp Floor') RETURNING id`,
+      [t.fixture.officeId],
+    );
+    const room = await t.db.query<{ id: number }>(
+      `INSERT INTO room (floor_id, name, capacity) VALUES ($1, 'Temp Room', 6) RETURNING id`,
+      [floor.rows[0]!.id],
+    );
+    await t.db.query('UPDATE floor SET is_active = false WHERE id = $1', [floor.rows[0]!.id]);
+
+    const s = slot(12, 4, 5);
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/api/bookings',
+      headers: { cookie },
+      payload: { room_id: room.rows[0]!.id, start: s.start, end: s.end, title: 'Should fail' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+  });
+
+  it('rejects booking a room under a soft-deleted office', async () => {
+    const cookie = await t.login('alice', 'alice1234');
+    const office = await t.db.query<{ id: number }>(
+      `INSERT INTO office (org_id, name) VALUES ($1, 'Temp Office') RETURNING id`,
+      [t.fixture.orgId],
+    );
+    const floor = await t.db.query<{ id: number }>(
+      `INSERT INTO floor (office_id, name) VALUES ($1, 'F') RETURNING id`,
+      [office.rows[0]!.id],
+    );
+    const room = await t.db.query<{ id: number }>(
+      `INSERT INTO room (floor_id, name, capacity) VALUES ($1, 'R', 6) RETURNING id`,
+      [floor.rows[0]!.id],
+    );
+    await t.db.query('UPDATE office SET is_active = false WHERE id = $1', [office.rows[0]!.id]);
+
+    const s = slot(13, 4, 5);
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/api/bookings',
+      headers: { cookie },
+      payload: { room_id: room.rows[0]!.id, start: s.start, end: s.end, title: 'Should fail' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+  });
+});
+
 describe('auth guards', () => {
   it('rejects unauthenticated booking with 401', async () => {
     const s = slot(8, 4, 5);

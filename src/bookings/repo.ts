@@ -44,9 +44,20 @@ const SELECT_WITH_LOCATION = `
 export class BookingRepo {
   constructor(private readonly db: Db) {}
 
+  /**
+   * Bookable = the room AND its whole ancestry are active (NF5). A soft-deleted
+   * floor or office must hide every room under it from the write path, exactly
+   * as availability does — a stale tab or crafted request can't book into a
+   * deactivated branch. `is_active` here is the AND of all three levels.
+   */
   async getRoomForBooking(roomId: number): Promise<RoomForBooking | null> {
     const { rows } = await this.db.query<RoomForBooking>(
-      'SELECT id, capacity, is_active FROM room WHERE id = $1',
+      `SELECT r.id, r.capacity,
+              (r.is_active AND f.is_active AND o.is_active) AS is_active
+         FROM room r
+         JOIN floor f  ON f.id = r.floor_id
+         JOIN office o ON o.id = f.office_id
+        WHERE r.id = $1`,
       [roomId],
     );
     return rows[0] ?? null;
