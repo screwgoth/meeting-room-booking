@@ -197,6 +197,45 @@ describe('GET /api/availability (F4/F5)', () => {
   });
 });
 
+describe('booking titles are private in availability (Roxy)', () => {
+  it('shows the real title to the owner and "Busy" to everyone else', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const s = slot(9, 4, 5);
+    const created = await t.app.inject({
+      method: 'POST',
+      url: '/api/bookings',
+      headers: { cookie: alice },
+      payload: {
+        room_id: t.fixture.huddleId,
+        start: s.start,
+        end: s.end,
+        title: 'Acme acquisition sync',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const bookingId = created.json().booking.id;
+
+    const url = `/api/availability?office=${t.fixture.officeId}&date=${s.date}`;
+    const findBooking = (body: { rooms: { id: number; bookings: { id: number; title: string; is_mine: boolean }[] }[] }) =>
+      body.rooms
+        .find((r) => r.id === t.fixture.huddleId)!
+        .bookings.find((b) => b.id === bookingId)!;
+
+    // Owner sees the real subject.
+    const asOwner = await t.app.inject({ method: 'GET', url, headers: { cookie: alice } });
+    const mine = findBooking(asOwner.json());
+    expect(mine.is_mine).toBe(true);
+    expect(mine.title).toBe('Acme acquisition sync');
+
+    // Another user sees only "Busy" — the subject never leaks.
+    const bob = await t.login('bob', 'bob1234');
+    const asOther = await t.app.inject({ method: 'GET', url, headers: { cookie: bob } });
+    const theirs = findBooking(asOther.json());
+    expect(theirs.is_mine).toBe(false);
+    expect(theirs.title).toBe('Busy');
+  });
+});
+
 describe('my-bookings + cancel (#8, F7)', () => {
   it('lists upcoming bookings and cancel frees the slot', async () => {
     const cookie = await t.login('bob', 'bob1234');

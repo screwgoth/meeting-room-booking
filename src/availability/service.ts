@@ -109,13 +109,19 @@ export class AvailabilityService {
 
     const roomsOut: AvailabilityRoomOut[] = rooms.map((r) => {
       const facilities = facByRoom.get(r.id) ?? [];
-      const bookings = (bookingsByRoom.get(r.id) ?? []).map((b) => ({
-        id: b.id,
-        start: b.start,
-        end: b.end,
-        title: b.title,
-        is_mine: b.user_id === viewerId,
-      }));
+      const bookings = (bookingsByRoom.get(r.id) ?? []).map((b) => {
+        const isMine = b.user_id === viewerId;
+        return {
+          id: b.id,
+          start: b.start,
+          end: b.end,
+          // Titles are private (Roxy): only the owner sees the real subject;
+          // everyone else sees "Busy". user_id is never exposed. Private→public
+          // is a trivial relax later; the reverse would be a trust breach.
+          title: isMine ? b.title : 'Busy',
+          is_mine: isMine,
+        };
+      });
 
       const out: AvailabilityRoomOut = {
         id: r.id,
