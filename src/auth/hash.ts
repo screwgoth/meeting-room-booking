@@ -4,7 +4,7 @@ import argon2 from 'argon2';
  * Password hashing (§7). argon2id with sane memory/time cost. Verification is
  * constant-time via argon2.verify. We never store or log plaintext.
  */
-const OPTIONS: argon2.Options = {
+const OPTIONS: argon2.HashOptions = {
   type: argon2.argon2id,
   memoryCost: 19456, // 19 MiB
   timeCost: 2,

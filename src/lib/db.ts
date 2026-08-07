@@ -1,4 +1,10 @@
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
+import { Pool, types, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
+
+// BIGINT (int8, OID 20) columns are all surrogate ids well within Number's safe
+// range. Parse them to JS numbers so the `number` types across repos are honest
+// (pg returns int8 as string by default). Aggregates that could overflow are
+// cast to ::text explicitly at the call site, so this is safe.
+types.setTypeParser(20, (val) => (val === null ? null : Number(val)));
 
 /**
  * Thin Postgres access layer. A single shared Pool for the monolith (§6).
