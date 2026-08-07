@@ -95,6 +95,17 @@
   0%, 100% { box-shadow: 0 0 0 0 var(--accent-band-edge); }
   50% { box-shadow: 0 0 0 2px var(--accent-tint-2); }
 }
+/* Window-band shimmer: one teal sweep on filter change so the eye lands on the band. */
+@keyframes band-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(110%); }
+}
+/* Count pop — the "rooms free" figure scale-pops lime when the number changes. */
+@keyframes count-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.28); color: var(--brand-lime); }
+  100% { transform: scale(1); }
+}
 
 /* Motion is feedback, never decoration — everything collapses to instant here. */
 @media (prefers-reduced-motion: reduce) {

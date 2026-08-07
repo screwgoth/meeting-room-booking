@@ -191,6 +191,7 @@ export const mockApi = {
       if (q.floor && r.floor_id !== q.floor) return false
       return true
     }).map((r) => {
+      const floor = FLOORS.find((f) => f.id === r.floor_id)!
       const roomBookings = bookings
         .filter((b) => b.room_id === r.id && b.status === 'confirmed')
         .filter((b) => b.endMs > dayStart && b.startMs < dayEnd)

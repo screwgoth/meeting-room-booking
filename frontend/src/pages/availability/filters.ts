@@ -51,3 +51,32 @@ export function defaultFilters(tz: string): Filters {
 export function durationMinutes(f: Filters): number {
   return fromHM(f.end) - fromHM(f.start)
 }
+
+/** Shift a `YYYY-MM-DD` date string by whole days (tz-agnostic; noon anchor avoids
+ * any DST/offset flip when we only care about the calendar date). */
+export function shiftDate(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 12))
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    dt.getUTCDate(),
+  ).padStart(2, '0')}`
+}
+
+/** Friendly weekday+date label (e.g. "Thu, 7 Aug") for a `YYYY-MM-DD` string. */
+export function dateLabel(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(Date.UTC(y, m - 1, d, 12)))
+}
+
+/** Relative label ("Today"/"Tomorrow"/"Yesterday"/"+N days") vs today in `tz`. */
+export function relativeDateLabel(date: string, today: string): string {
+  const diff = Math.round((Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000)
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Tomorrow'
+  if (diff === -1) return 'Yesterday'
+  return `${diff > 0 ? '+' : ''}${diff} days`
+}

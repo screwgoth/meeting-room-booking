@@ -3,6 +3,7 @@
 // with `VITE_USE_MOCKS=false` (or once Sam confirms, we drop the mock branch).
 
 import { apiFetch } from './client'
+import { USE_MOCKS } from './env'
 import { mockApi } from './mock'
 import type {
   AvailabilityQuery,
@@ -16,8 +17,6 @@ import type {
   Office,
   User,
 } from './types'
-
-const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false'
 
 function qs(params: Record<string, string | number | undefined | number[]>): string {
   const sp = new URLSearchParams()
@@ -43,12 +42,22 @@ export const api = {
   logout: () =>
     USE_MOCKS ? mockApi.logout() : apiFetch<void>('/api/auth/logout', { method: 'POST' }),
 
-  offices: () => (USE_MOCKS ? mockApi.offices() : apiFetch<Office[]>('/api/offices')),
+  // Sam's location reads wrap the list in an envelope ({ offices }, { floors },
+  // { facilities }) — unwrap here so callers keep a flat array either way.
+  offices: () =>
+    USE_MOCKS
+      ? mockApi.offices()
+      : apiFetch<{ offices: Office[] }>('/api/offices').then((r) => r.offices),
 
   floors: (officeId: number) =>
-    USE_MOCKS ? mockApi.floors(officeId) : apiFetch<Floor[]>(`/api/offices/${officeId}/floors`),
+    USE_MOCKS
+      ? mockApi.floors(officeId)
+      : apiFetch<{ floors: Floor[] }>(`/api/offices/${officeId}/floors`).then((r) => r.floors),
 
-  facilities: () => (USE_MOCKS ? mockApi.facilities() : apiFetch<Facility[]>('/api/facilities')),
+  facilities: () =>
+    USE_MOCKS
+      ? mockApi.facilities()
+      : apiFetch<{ facilities: Facility[] }>('/api/facilities').then((r) => r.facilities),
 
   availability: (q: AvailabilityQuery) =>
     USE_MOCKS

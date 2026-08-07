@@ -51,8 +51,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const body = text ? safeJson(text) : null
 
   if (!res.ok) {
-    const detail =
-      (body && typeof body === 'object' && 'detail' in body && String((body as Record<string, unknown>).detail)) ||
+    const detail: string =
+      (body && typeof body === 'object' && 'detail' in body
+        ? String((body as Record<string, unknown>).detail)
+        : '') ||
       res.statusText ||
       'Request failed'
     throw new ApiError(res.status, detail, body)

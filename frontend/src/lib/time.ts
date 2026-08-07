@@ -105,6 +105,25 @@ export function fmtDate(instant: Date | string, tz: string): string {
   }).format(d)
 }
 
+const WINDOW_MINUTES = (GRID_END_HOUR - GRID_START_HOUR) * 60 // 720
+
+/** Horizontal % (0–100) across the 08:00–20:00 track for a minutes-from-grid-start
+ * value. Clamped so out-of-window bookings still paint at the track edge. */
+export function pctFromGridMinutes(mins: number): number {
+  return Math.max(0, Math.min(100, (mins / WINDOW_MINUTES) * 100))
+}
+
+/** Horizontal % across the track for a UTC instant, rendered in `tz`. */
+export function instantPct(instant: Date | string, tz: string): number {
+  return pctFromGridMinutes(minutesFromGridStart(instant, tz))
+}
+
+/** True when the instant is at or before "now" (grey-out passed slots, §5a). */
+export function isPast(instant: Date | string): boolean {
+  const d = typeof instant === 'string' ? new Date(instant) : instant
+  return d.getTime() <= now().getTime()
+}
+
 /** `HH:mm` label for a slot index within the window (0 → "08:00"). */
 export function slotLabel(index: number): string {
   const total = GRID_START_HOUR * 60 + index * SLOT_MINUTES
