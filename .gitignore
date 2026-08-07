@@ -19,3 +19,7 @@ dist/
 
 # Local
 *.log
+.env.local
+.pgdata/
+.pgdata-*/
+coverage/

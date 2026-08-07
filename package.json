@@ -1,0 +1,52 @@
+{
+  "name": "meeting-room-booking",
+  "version": "1.0.0",
+  "description": "Internal, single-organization web app for booking meeting rooms across a multi-office organization.",
+  "main": "dist/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "db:dev": "tsx scripts/dev-db.ts",
+    "seed": "tsx scripts/seed.ts",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/screwgoth/meeting-room-booking.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/screwgoth/meeting-room-booking/issues"
+  },
+  "homepage": "https://github.com/screwgoth/meeting-room-booking#readme",
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/secure-session": "^8.3.0",
+    "argon2": "^0.45.1",
+    "fastify": "^5.11.2",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/pg": "^8.20.4",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "tsx": "^4.23.9",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "@embedded-postgres/linux-x64@18.4.0-beta.17": true,
+    "argon2@0.45.1": true,
+    "esbuild@0.28.1": true
+  }
+}

@@ -1,20 +1,32 @@
-# Frontend — meeting-room-booking
+# React + TypeScript + Vite
 
-Owner: **Nemo**. React (Vite) SPA over the DRF JSON API. See `../docs/ARCHITECTURE.md`.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-This directory is the frontend lane. Everything client-side (Vite app, components,
-API client) lives here. Do not touch `../backend/`.
+Currently, two official plugins are available:
 
-Design reference: Priya's mockup at `~/artifacts/mockups/meeting-room-booking/index.html`
-and `design-rationale.md`. Design locks are in ARCHITECTURE.md **§5a**.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Phase 1 scope (this branch)
-- Vite + React scaffold, API client, auth/login flow (local username/password), session handling.
-- App shell + routing; Employee vs Admin views gated by role.
-- Push as far into the core loop as lands cleanly: office/floor picker, **15-min availability grid**
-  (window 08:00–20:00, grey-out passed slots), filters (time/capacity/facilities),
-  book-the-filtered-window (≤2 clicks), My Bookings + cancel.
-- Capacity over-book = **soft warning** confirm prompt, never a hard block (§5a / §2 API contract).
+## React Compiler
 
-Coordinate the API contract with Sam via ARCHITECTURE.md §2/§3; if a field is unspecified,
-ping Sam (agentId: sam) rather than guessing.
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the Oxlint configuration
+
+If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+
+```json
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
+```
+
+See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.

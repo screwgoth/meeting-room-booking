@@ -1,0 +1,39 @@
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthContext'
+import { Spinner } from '@/components/ui/Spinner'
+import { AppShell } from '@/components/AppShell'
+import { LoginPage } from '@/pages/LoginPage'
+import { AvailabilityPage } from '@/pages/AvailabilityPage'
+import { MyBookingsPage } from '@/pages/MyBookingsPage'
+import type { ReactNode } from 'react'
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading)
+    return (
+      <div className="grid min-h-screen place-items-center text-accent">
+        <Spinner className="h-6 w-6" />
+      </div>
+    )
+  if (!user) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        element={
+          <RequireAuth>
+            <AppShell />
+          </RequireAuth>
+        }
+      >
+        <Route path="/" element={<AvailabilityPage />} />
+        <Route path="/my-bookings" element={<MyBookingsPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
