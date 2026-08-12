@@ -341,6 +341,246 @@ describe('soft-delete guards the write path (NF5)', () => {
   });
 });
 
+describe('edit own booking (F11)', () => {
+  const book = (cookie: string, roomId: number, s: { start: string; end: string }, title: string) =>
+    t.app.inject({
+      method: 'POST',
+      url: '/api/bookings',
+      headers: { cookie },
+      payload: { room_id: roomId, start: s.start, end: s.end, title },
+    });
+
+  it('owner reschedules: new window applied, old slot freed, new slot taken', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const from = slot(22, 4, 5);
+    const to = slot(22, 6, 7);
+    const created = await book(alice, t.fixture.boardroomId, from, 'Original');
+    expect(created.statusCode).toBe(201);
+    const id = created.json().booking.id;
+
+    const edited = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: alice },
+      payload: { room_id: t.fixture.boardroomId, start: to.start, end: to.end, title: 'Rescheduled' },
+    });
+    expect(edited.statusCode).toBe(200);
+    const body = edited.json();
+    expect(body.booking.id).toBe(id);
+    expect(body.booking.start).toBe(to.start);
+    expect(body.booking.title).toBe('Rescheduled');
+    expect(body.warnings).toEqual([]);
+
+    // Old slot is free again — another user can claim it.
+    const bob = await t.login('bob', 'bob1234');
+    const reclaimOld = await book(bob, t.fixture.boardroomId, from, 'Takes old slot');
+    expect(reclaimOld.statusCode).toBe(201);
+    // New slot is now occupied — the same room+window is a conflict.
+    const clashNew = await book(bob, t.fixture.boardroomId, to, 'Wants new slot');
+    expect(clashNew.statusCode).toBe(409);
+  });
+
+  it('rejects editing someone else’s booking with 403', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const s = slot(23, 4, 5);
+    const created = await book(alice, t.fixture.boardroomId, s, 'Alice only');
+    const id = created.json().booking.id;
+
+    const bob = await t.login('bob', 'bob1234');
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: bob },
+      payload: { room_id: t.fixture.boardroomId, start: s.start, end: s.end, title: 'Hijack' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('forbidden');
+  });
+
+  it('rejects an edit that overlaps another confirmed booking with 409', async () => {
+    const bob = await t.login('bob', 'bob1234');
+    const target = slot(24, 6, 7);
+    const bobBooking = await book(bob, t.fixture.boardroomId, target, 'Bob holds target');
+    expect(bobBooking.statusCode).toBe(201);
+
+    const alice = await t.login('alice', 'alice1234');
+    const src = slot(24, 4, 5);
+    const created = await book(alice, t.fixture.huddleId, src, 'Alice src');
+    const id = created.json().booking.id;
+
+    // Alice tries to move onto the slot Bob already holds → conflict.
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: alice },
+      payload: { room_id: t.fixture.boardroomId, start: target.start, end: target.end, title: 'Clash' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('conflict');
+  });
+
+  it('rejects a grid-misaligned edit with 422', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const s = slot(25, 4, 5);
+    const created = await book(alice, t.fixture.boardroomId, s, 'To misalign');
+    const id = created.json().booking.id;
+
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: alice },
+      payload: {
+        room_id: t.fixture.boardroomId,
+        start: s.start.replace('04:00', '04:07'),
+        end: s.end,
+        title: 'Bad grid',
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+  });
+
+  it('rejects editing a cancelled booking with 409', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const s = slot(26, 4, 5);
+    const created = await book(alice, t.fixture.boardroomId, s, 'Will cancel');
+    const id = created.json().booking.id;
+    const cancelled = await t.app.inject({
+      method: 'POST',
+      url: `/api/bookings/${id}/cancel`,
+      headers: { cookie: alice },
+    });
+    expect(cancelled.statusCode).toBe(200);
+
+    const to = slot(26, 6, 7);
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: alice },
+      payload: { room_id: t.fixture.boardroomId, start: to.start, end: to.end, title: 'Zombie' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('conflict');
+  });
+
+  it('rejects editing a booking that has already ended with 409', async () => {
+    // Seed a past booking directly (the API's grid guard blocks booking in the
+    // past, so we insert one to exercise the "upcoming only" rule).
+    const past = slot(-2, 4, 5);
+    const { rows } = await t.db.query<{ id: number }>(
+      `INSERT INTO booking (room_id, user_id, during, title)
+       VALUES ($1, $2, tstzrange($3::timestamptz, $4::timestamptz, '[)'), $5) RETURNING id`,
+      [t.fixture.huddleId, t.fixture.aliceId, past.start, past.end, 'Yesterday'],
+    );
+    const id = rows[0]!.id;
+
+    const alice = await t.login('alice', 'alice1234');
+    const to = slot(27, 6, 7);
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: alice },
+      payload: { room_id: t.fixture.huddleId, start: to.start, end: to.end, title: 'Time travel' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('conflict');
+  });
+
+  it('returns a non-blocking warning when an edit pushes attendees over capacity', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const s = slot(28, 4, 5);
+    const created = await book(alice, t.fixture.huddleId, s, 'Small'); // huddle cap 4
+    const id = created.json().booking.id;
+
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: `/api/bookings/${id}`,
+      headers: { cookie: alice },
+      payload: {
+        room_id: t.fixture.huddleId,
+        start: s.start,
+        end: s.end,
+        title: 'Now crowded',
+        attendee_count: 6,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.booking.status).toBe('confirmed');
+    expect(body.warnings).toHaveLength(1);
+    expect(body.warnings[0].code).toBe('attendees_over_capacity');
+  });
+
+  it('returns 404 for a non-existent booking', async () => {
+    const alice = await t.login('alice', 'alice1234');
+    const s = slot(29, 6, 7);
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: '/api/bookings/99999999',
+      headers: { cookie: alice },
+      payload: { room_id: t.fixture.boardroomId, start: s.start, end: s.end, title: 'Ghost' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ⭐ The edit path is an overlap-checked UPDATE — it must be arbitrated by the
+// SAME EXCLUDE constraint as an insert (§2). Two owners concurrently reschedule
+// into one room+slot: exactly one UPDATE commits, the other raises 23P01.
+describe('deterministic two-txn race on the UPDATE path (F11 §2)', () => {
+  async function seed(roomId: number, userId: number, start: string, end: string, title: string) {
+    const { rows } = await t.db.query<{ id: number }>(
+      `INSERT INTO booking (room_id, user_id, during, title)
+       VALUES ($1, $2, tstzrange($3::timestamptz, $4::timestamptz, '[)'), $5) RETURNING id`,
+      [roomId, userId, start, end, title],
+    );
+    return rows[0]!.id;
+  }
+
+  it('lets exactly one of two concurrent edits into the same slot win', async () => {
+    const src = slot(30, 4, 5); // two bookings start here, in distinct rooms
+    const target = slot(31, 6, 7); // the contested slot both move into
+    const b1 = await seed(t.fixture.boardroomId, t.fixture.aliceId, src.start, src.end, 'A-src');
+    const b2 = await seed(t.fixture.huddleId, t.fixture.bobId, src.start, src.end, 'B-src');
+
+    const UPDATE = `UPDATE booking
+       SET room_id = $2, during = tstzrange($3::timestamptz, $4::timestamptz, '[)')
+     WHERE id = $1 AND status = 'confirmed'`;
+    const a = await t.db.pool.connect();
+    const b = await t.db.pool.connect();
+    try {
+      await a.query('BEGIN');
+      await b.query('BEGIN');
+      // A moves b1 into the target slot and holds the predicate lock (uncommitted).
+      await a.query(UPDATE, [b1, t.fixture.boardroomId, target.start, target.end]);
+      // B's overlapping move blocks on the GiST exclusion index...
+      const bUpdate = b.query(UPDATE, [b2, t.fixture.boardroomId, target.start, target.end]);
+      await a.query('COMMIT');
+      let bFailed = false;
+      try {
+        await bUpdate;
+        await b.query('COMMIT');
+      } catch (err) {
+        bFailed = true;
+        expect((err as { code?: string }).code).toBe('23P01');
+        await b.query('ROLLBACK');
+      }
+      expect(bFailed).toBe(true);
+    } finally {
+      a.release();
+      b.release();
+    }
+
+    const { rows } = await t.db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM booking
+        WHERE room_id = $1 AND status = 'confirmed'
+          AND during = tstzrange($2::timestamptz, $3::timestamptz, '[)')`,
+      [t.fixture.boardroomId, target.start, target.end],
+    );
+    expect(Number(rows[0]!.n)).toBe(1);
+  });
+});
+
 describe('auth guards', () => {
   it('rejects unauthenticated booking with 401', async () => {
     const s = slot(8, 4, 5);
