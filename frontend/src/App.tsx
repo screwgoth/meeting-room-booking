@@ -7,6 +7,7 @@ import { AvailabilityPage } from '@/pages/AvailabilityPage'
 import { MyBookingsPage } from '@/pages/MyBookingsPage'
 import { AdminLayout } from '@/pages/admin/AdminLayout'
 import { AdminUsersPage } from '@/pages/admin/AdminUsersPage'
+import { AdminBookingsPage } from '@/pages/admin/AdminBookingsPage'
 import { AdminLocationsPage } from '@/pages/admin/AdminLocationsPage'
 import { AdminFacilitiesPage } from '@/pages/admin/AdminFacilitiesPage'
 import type { ReactNode } from 'react'
@@ -37,7 +38,8 @@ export default function App() {
         <Route path="/" element={<AvailabilityPage />} />
         <Route path="/my-bookings" element={<MyBookingsPage />} />
         <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<Navigate to="/admin/users" replace />} />
+          <Route index element={<Navigate to="/admin/bookings" replace />} />
+          <Route path="bookings" element={<AdminBookingsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="locations" element={<AdminLocationsPage />} />
           <Route path="facilities" element={<AdminFacilitiesPage />} />

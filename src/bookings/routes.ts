@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { BookingService } from './service.js';
 import type { UserRepo } from '../auth/userRepo.js';
-import { makeAuthPreHandler } from '../auth/rbac.js';
+import { makeAuthPreHandler, requireRole } from '../auth/rbac.js';
 
 const Id = z.coerce.number().int().positive();
 
@@ -15,8 +15,11 @@ const CreateBooking = z.object({
 });
 
 // F11 edit: the form re-submits the full mutable set (room/time/title/attendees),
-// re-validated against conflicts. Same shape as create.
-const EditBooking = CreateBooking;
+// re-validated against conflicts. Admins may additionally reassign the owner
+// (owner_user_id) — the service enforces the ADMIN gate on that field.
+const EditBooking = CreateBooking.extend({
+  owner_user_id: Id.optional(),
+});
 
 const CancelBody = z
   .object({ reason: z.string().trim().max(500).optional() })
@@ -49,8 +52,8 @@ export async function registerBookingRoutes(
     return result;
   });
 
-  // Edit an own upcoming booking (F11) — re-validated against conflicts.
-  // 200 on success; 403 non-owner; 404 missing; 409 overlap/cancelled/ended; 422 grid.
+  // Edit an upcoming booking (F11 own; admin any) — re-validated against conflicts.
+  // 200 on success; 403 non-owner/non-admin; 404 missing; 409 overlap/cancelled/ended; 422 grid.
   app.patch('/api/bookings/:id', { preHandler: authed }, async (req) => {
     const id = Id.parse((req.params as Record<string, unknown>).id);
     const b = EditBooking.parse(req.body);
@@ -60,8 +63,19 @@ export async function registerBookingRoutes(
       endISO: b.end,
       title: b.title,
       attendeeCount: b.attendee_count ?? null,
+      ownerUserId: b.owner_user_id,
     });
   });
+
+  // Admin: every confirmed, not-yet-ended booking across all users. Feeds the
+  // admin bookings console (edit / cancel / reassign owner).
+  app.get(
+    '/api/admin/bookings',
+    { preHandler: [requireAuth, requireRole('ADMIN')] },
+    async () => {
+      return { bookings: await service.listAllUpcoming() };
+    },
+  );
 
   // My bookings (#8) — upcoming + past for the authenticated user.
   app.get('/api/bookings/mine', { preHandler: authed }, async (req) => {
