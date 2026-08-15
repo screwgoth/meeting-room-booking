@@ -1,9 +1,10 @@
 import { NavLink, Navigate, Outlet } from 'react-router-dom'
-import { Users, Building2, Sparkles } from 'lucide-react'
+import { Users, Building2, Sparkles, CalendarClock } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 
 const SUBTABS = [
+  { to: '/admin/bookings', label: 'Bookings', icon: CalendarClock },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/locations', label: 'Rooms & Locations', icon: Building2 },
   { to: '/admin/facilities', label: 'Must-haves', icon: Sparkles },

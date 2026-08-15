@@ -4,11 +4,50 @@ export interface BookingPolicy {
   slotMinutes: number;
   maxDurationMinutes: number;
   horizonDays: number;
+  /** Org display timezone — defines the "today" boundary for retroactive bookings. */
+  orgDisplayTz: string;
 }
 
 export interface BookingWindow {
   start: Date;
   end: Date;
+}
+
+/** UTC offset (ms) that `tz` is ahead of UTC at the given instant. */
+function tzOffsetMs(date: Date, tz: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const map: Record<string, string> = {};
+  for (const p of dtf.formatToParts(date)) map[p.type] = p.value;
+  const asUTC = Date.UTC(
+    Number(map.year),
+    Number(map.month) - 1,
+    Number(map.day),
+    Number(map.hour),
+    Number(map.minute),
+    Number(map.second),
+  );
+  return asUTC - date.getTime();
+}
+
+/** Instant (ms) of local midnight for `now`'s calendar day in `tz`. */
+export function startOfDayMs(now: Date, tz: string): number {
+  const off = tzOffsetMs(now, tz);
+  const local = new Date(now.getTime() + off);
+  const localMidnightAsUTC = Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate(),
+  );
+  return localMidnightAsUTC - off;
 }
 
 /**
@@ -57,8 +96,16 @@ export function validateBookingWindow(
     );
   }
 
-  if (start.getTime() < now.getTime()) {
-    throw new ValidationError('cannot book a slot in the past');
+  // Retroactive same-day booking (F-retro): you may book a window whose start is
+  // already in the past — e.g. reserve 09:00–17:00 at 14:00 — as long as the
+  // window has not fully ended and its start is still within *today* (org tz).
+  // This lets people formalise a meeting already under way without letting them
+  // resurrect slots from a previous day.
+  if (end.getTime() <= now.getTime()) {
+    throw new ValidationError('cannot book a slot that has already ended');
+  }
+  if (start.getTime() < startOfDayMs(now, policy.orgDisplayTz)) {
+    throw new ValidationError('retroactive bookings are limited to the current day');
   }
 
   const horizonMs = policy.horizonDays * 24 * 60 * 60_000;

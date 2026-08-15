@@ -41,6 +41,27 @@ export interface AdminFacility {
   is_active: boolean
 }
 
+export interface AdminBooking {
+  id: number
+  room_id: number
+  location: { office: string; floor: string; room: string }
+  start: string // ISO8601Z
+  end: string // ISO8601Z
+  title: string
+  attendee_count: number | null
+  status: 'confirmed' | 'cancelled'
+  owner: { id: number; username: string; display_name: string }
+}
+
+export interface UpdateBookingBody {
+  room_id: number
+  start: string
+  end: string
+  title: string
+  attendee_count?: number | null
+  owner_user_id?: number
+}
+
 export interface CreateUserBody {
   username: string
   displayName: string
@@ -71,6 +92,20 @@ export const adminApi = {
       method: 'PATCH',
       body: body(b),
     }).then((r) => r.user),
+
+  // ---- Bookings (admin console) -------------------------------------------
+  listBookings: () =>
+    apiFetch<{ bookings: AdminBooking[] }>('/api/admin/bookings').then((r) => r.bookings),
+  updateBooking: (id: number, b: UpdateBookingBody) =>
+    apiFetch<{ booking: AdminBooking }>(`/api/bookings/${id}`, {
+      method: 'PATCH',
+      body: body(b),
+    }).then((r) => r.booking),
+  cancelBooking: (id: number, reason?: string) =>
+    apiFetch<{ booking: AdminBooking }>(`/api/bookings/${id}/cancel`, {
+      method: 'POST',
+      body: body({ reason }),
+    }).then((r) => r.booking),
 
   // ---- Offices -------------------------------------------------------------
   listOffices: () =>

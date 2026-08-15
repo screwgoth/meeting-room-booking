@@ -13,6 +13,8 @@ export interface Booking {
   title: string;
   attendee_count: number | null;
   status: 'confirmed' | 'cancelled';
+  /** Present on admin-facing responses; the booking's current owner. */
+  owner?: { id: number; username: string; display_name: string };
 }
 
 export interface BookingWarning {
@@ -28,6 +30,11 @@ export interface CreateBookingInput {
   attendeeCount: number | null;
 }
 
+export interface UpdateBookingServiceInput extends CreateBookingInput {
+  /** Admin-only: reassign the booking to another (active) user. */
+  ownerUserId?: number;
+}
+
 /** Postgres exclusion_violation — the overlap guard firing (§2). */
 const SQLSTATE_EXCLUSION_VIOLATION = '23P01';
 
@@ -36,7 +43,7 @@ function isPgError(err: unknown): err is { code: string } {
 }
 
 export function serializeBooking(row: BookingWithLocationRow): Booking {
-  return {
+  const booking: Booking = {
     id: row.id,
     room_id: row.room_id,
     location: { office: row.office_name, floor: row.floor_name, room: row.room_name },
@@ -46,6 +53,14 @@ export function serializeBooking(row: BookingWithLocationRow): Booking {
     attendee_count: row.attendee_count,
     status: row.status,
   };
+  if (row.owner_username != null && row.owner_display_name != null) {
+    booking.owner = {
+      id: row.user_id,
+      username: row.owner_username,
+      display_name: row.owner_display_name,
+    };
+  }
+  return booking;
 }
 
 /**
@@ -65,6 +80,7 @@ export class BookingService {
       slotMinutes: config.slotMinutes,
       maxDurationMinutes: config.maxDurationMinutes,
       horizonDays: config.horizonDays,
+      orgDisplayTz: config.orgDisplayTz,
     };
   }
 
@@ -119,11 +135,13 @@ export class BookingService {
   async update(
     principal: Principal,
     id: number,
-    input: CreateBookingInput,
+    input: UpdateBookingServiceInput,
   ): Promise<{ booking: Booking; warnings: BookingWarning[] }> {
+    const isAdmin = principal.role === 'ADMIN';
     const existing = await this.repo.getById(id);
     if (!existing) throw new NotFoundError('Booking not found');
-    if (existing.user_id !== principal.id) {
+    // Owner may edit their own; an admin may edit anyone's (§7 authz).
+    if (existing.user_id !== principal.id && !isAdmin) {
       throw new ForbiddenError('You can only edit your own bookings');
     }
     if (existing.status !== 'confirmed') {
@@ -133,7 +151,19 @@ export class BookingService {
       throw new ConflictError('Cannot edit a booking that has already ended');
     }
 
-    // Re-validate the new window (grid / past / horizon / duration) → 422 first.
+    // Owner reassignment is admin-only, and the new owner must be active.
+    let ownerUserId: number | undefined;
+    if (input.ownerUserId !== undefined && input.ownerUserId !== existing.user_id) {
+      if (!isAdmin) {
+        throw new ForbiddenError('Only an administrator can reassign a booking owner');
+      }
+      if (!(await this.repo.userIsActive(input.ownerUserId))) {
+        throw new ValidationError('Target owner does not exist or is inactive');
+      }
+      ownerUserId = input.ownerUserId;
+    }
+
+    // Re-validate the new window (grid / retro-day / horizon / duration) → 422 first.
     validateBookingWindow(input.startISO, input.endISO, this.policy);
 
     const room = await this.repo.getRoomForBooking(input.roomId);
@@ -158,6 +188,7 @@ export class BookingService {
         endISO: input.endISO,
         title: input.title,
         attendeeCount: input.attendeeCount,
+        ownerUserId,
       });
     } catch (err) {
       if (isPgError(err) && err.code === SQLSTATE_EXCLUSION_VIOLATION) {
@@ -182,6 +213,11 @@ export class BookingService {
       upcoming: upcoming.map(serializeBooking),
       past: past.map(serializeBooking),
     };
+  }
+
+  /** Admin: every confirmed, not-yet-ended booking across all users (soonest first). */
+  async listAllUpcoming(): Promise<Booking[]> {
+    return (await this.repo.listAllUpcoming()).map(serializeBooking);
   }
 
   async cancel(principal: Principal, id: number, reason: string | null): Promise<Booking> {

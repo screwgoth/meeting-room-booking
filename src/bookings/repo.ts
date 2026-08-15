@@ -13,6 +13,8 @@ export interface BookingWithLocationRow {
   office_name: string;
   floor_name: string;
   room_name: string;
+  owner_username: string;
+  owner_display_name: string;
 }
 
 export interface RoomForBooking {
@@ -37,17 +39,21 @@ export interface UpdateBookingInput {
   endISO: string;
   title: string;
   attendeeCount: number | null;
+  /** Admin owner reassignment; undefined leaves the owner unchanged. */
+  ownerUserId?: number;
 }
 
 const SELECT_WITH_LOCATION = `
   SELECT b.id, b.room_id, b.user_id, b.title, b.attendee_count, b.status,
          to_char(lower(b.during) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start,
          to_char(upper(b.during) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "end",
-         o.name AS office_name, f.name AS floor_name, r.name AS room_name
+         o.name AS office_name, f.name AS floor_name, r.name AS room_name,
+         u.username AS owner_username, u.display_name AS owner_display_name
     FROM booking b
-    JOIN room r   ON r.id = b.room_id
-    JOIN floor f  ON f.id = r.floor_id
-    JOIN office o ON o.id = f.office_id`;
+    JOIN room r     ON r.id = b.room_id
+    JOIN floor f    ON f.id = r.floor_id
+    JOIN office o   ON o.id = f.office_id
+    JOIN app_user u ON u.id = b.user_id`;
 
 /** Data access for bookings (#7/#8). All queries parameterized (§7). */
 export class BookingRepo {
@@ -115,10 +121,19 @@ export class BookingRepo {
                 during = tstzrange($3::timestamptz, $4::timestamptz, '[)'),
                 title = $5,
                 attendee_count = $6,
+                user_id = COALESCE($7, user_id),
                 updated_at = now()
           WHERE id = $1 AND status = 'confirmed'
           RETURNING id`,
-        [input.id, input.roomId, input.startISO, input.endISO, input.title, input.attendeeCount],
+        [
+          input.id,
+          input.roomId,
+          input.startISO,
+          input.endISO,
+          input.title,
+          input.attendeeCount,
+          input.ownerUserId ?? null,
+        ],
       );
       if (!updated.rows[0]) return null;
       const { rows } = await client.query<BookingWithLocationRow>(
@@ -127,6 +142,25 @@ export class BookingRepo {
       );
       return rows[0]!;
     });
+  }
+
+  /** True if the user exists and is active — gate for admin owner reassignment. */
+  async userIsActive(userId: number): Promise<boolean> {
+    const { rows } = await this.db.query<{ ok: boolean }>(
+      `SELECT is_active AS ok FROM app_user WHERE id = $1`,
+      [userId],
+    );
+    return rows[0]?.ok === true;
+  }
+
+  /** Admin: all confirmed, not-yet-ended bookings across every user (#8, admin). */
+  async listAllUpcoming(): Promise<BookingWithLocationRow[]> {
+    const { rows } = await this.db.query<BookingWithLocationRow>(
+      `${SELECT_WITH_LOCATION}
+        WHERE b.status = 'confirmed' AND upper(b.during) > now()
+        ORDER BY lower(b.during) ASC`,
+    );
+    return rows;
   }
 
   async getById(id: number): Promise<BookingWithLocationRow | null> {

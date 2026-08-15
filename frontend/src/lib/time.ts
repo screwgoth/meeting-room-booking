@@ -132,6 +132,20 @@ export function slotLabel(index: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+/** Date string `YYYY-MM-DD` of a UTC instant as rendered in tz. */
+export function dateInTz(instant: Date | string, tz: string): string {
+  const d = typeof instant === 'string' ? new Date(instant) : instant
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d)
+  const map: Record<string, string> = {}
+  for (const p of parts) map[p.type] = p.value
+  return `${map.year}-${map.month}-${map.day}`
+}
+
 /** Today's date string `YYYY-MM-DD` as rendered in tz. */
 export function todayInTz(tz: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
