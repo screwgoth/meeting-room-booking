@@ -47,6 +47,65 @@ export class UserRepo {
     return rows[0] ?? null;
   }
 
+  /** Admin listing. Active users first, then by display name. */
+  async list(includeInactive = true): Promise<UserRow[]> {
+    const { rows } = await this.db.query<UserRow>(
+      `SELECT id, username, email, display_name, role, password_hash,
+              auth_source, directory_id, is_active
+         FROM app_user
+        WHERE ($1 OR is_active)
+        ORDER BY is_active DESC, display_name`,
+      [includeInactive],
+    );
+    return rows;
+  }
+
+  /** Patch profile fields (never the password — see setPassword). */
+  async update(
+    id: number,
+    fields: { displayName?: string; email?: string | null; role?: Role; isActive?: boolean },
+  ): Promise<UserRow | null> {
+    const { rows } = await this.db.query<UserRow>(
+      `UPDATE app_user SET
+         display_name = COALESCE($2, display_name),
+         email        = CASE WHEN $3::boolean THEN $4 ELSE email END,
+         role         = COALESCE($5, role),
+         is_active    = COALESCE($6, is_active)
+       WHERE id = $1
+       RETURNING id, username, email, display_name, role, password_hash,
+                 auth_source, directory_id, is_active`,
+      [
+        id,
+        fields.displayName ?? null,
+        fields.email !== undefined,
+        fields.email ?? null,
+        fields.role ?? null,
+        fields.isActive ?? null,
+      ],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Reset a LOCAL user's password hash. */
+  async setPassword(id: number, passwordHash: string): Promise<UserRow | null> {
+    const { rows } = await this.db.query<UserRow>(
+      `UPDATE app_user SET password_hash = $2
+        WHERE id = $1 AND auth_source = 'LOCAL'
+       RETURNING id, username, email, display_name, role, password_hash,
+                 auth_source, directory_id, is_active`,
+      [id, passwordHash],
+    );
+    return rows[0] ?? null;
+  }
+
+  async countActiveAdmins(): Promise<number> {
+    const { rows } = await this.db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM app_user
+        WHERE role = 'ADMIN' AND is_active`,
+    );
+    return Number(rows[0]!.n);
+  }
+
   async createLocal(input: CreateLocalUserInput): Promise<UserRow> {
     const { rows } = await this.db.query<UserRow>(
       `INSERT INTO app_user
