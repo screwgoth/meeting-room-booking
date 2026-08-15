@@ -12,6 +12,11 @@ export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
+  const tabs =
+    user?.role === 'ADMIN'
+      ? [...TABS, { to: '/admin', label: 'Admin', end: false }]
+      : TABS
+
   const initials = (user?.display_name ?? '?')
     .split(' ')
     .map((s) => s[0])
@@ -29,7 +34,7 @@ export function AppShell() {
         </div>
 
         <nav className="flex items-center gap-1" aria-label="Primary">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <NavLink
               key={t.to}
               to={t.to}

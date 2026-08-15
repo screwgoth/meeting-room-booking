@@ -1,0 +1,46 @@
+# Meeting Room Booking — full stack (Postgres + API/SPA) for local & demo runs.
+# Driven by ./app.sh. Secrets fall back to insecure dev defaults; override via a
+# .env file next to this compose file for anything real.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mrb
+      POSTGRES_PASSWORD: mrb
+      POSTGRES_DB: mrb
+    volumes:
+      - mrb-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mrb -d mrb']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - '${DB_PORT:-5433}:5432'
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://mrb:mrb@db:5432/mrb
+      HOST: 0.0.0.0
+      PORT: 3000
+      STATIC_DIR: /app/frontend/dist
+      # Dev defaults — OVERRIDE in production (>=32 chars).
+      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-session-secret-change-me-please}
+      SESSION_SALT: ${SESSION_SALT:-mrb-session-salt}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ORG_DISPLAY_TZ: ${ORG_DISPLAY_TZ:-Asia/Kolkata}
+      SEED_ON_START: ${SEED_ON_START:-true}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin1234}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-user1234}
+    ports:
+      - '${APP_PORT:-3000}:3000'
+
+volumes:
+  mrb-pgdata:

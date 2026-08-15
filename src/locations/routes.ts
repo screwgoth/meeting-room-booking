@@ -115,6 +115,10 @@ export async function registerLocationRoutes(
   });
 
   // ---- Facilities (admin) --------------------------------------------------
+  app.get('/api/admin/facilities', { preHandler: admin }, async (req) => {
+    const includeInactive = (req.query as Record<string, unknown>)?.includeInactive !== 'false';
+    return { facilities: await repo.listFacilities(includeInactive) };
+  });
   app.post('/api/admin/facilities', { preHandler: admin }, async (req, reply) => {
     const { name } = z.object({ name: Name }).parse(req.body);
     reply.code(201);

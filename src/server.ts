@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyError } from 'fastify';
 import secureSession from '@fastify/secure-session';
+import fastifyStatic from '@fastify/static';
 import { ZodError } from 'zod';
 import type { Config } from './config.js';
 import type { Db } from './lib/db.js';
@@ -16,6 +17,8 @@ import { registerBookingRoutes } from './bookings/routes.js';
 import { AvailabilityRepo } from './availability/repo.js';
 import { AvailabilityService } from './availability/service.js';
 import { registerAvailabilityRoutes } from './availability/routes.js';
+import { UserService } from './users/service.js';
+import { registerUserRoutes } from './users/routes.js';
 
 // Only the user id lives in the (encrypted) session cookie (§7).
 declare module '@fastify/secure-session' {
@@ -88,6 +91,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const bookingService = new BookingService(bookingRepo, config);
   const availabilityRepo = new AvailabilityRepo(db);
   const availabilityService = new AvailabilityService(availabilityRepo, config);
+  const userService = new UserService(users);
 
   app.get('/api/health', async () => ({ status: 'ok' }));
 
@@ -95,6 +99,22 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await registerLocationRoutes(app, { service: locationService, repo: locationRepo, users });
   await registerAvailabilityRoutes(app, { service: availabilityService, users });
   await registerBookingRoutes(app, { service: bookingService, users });
+  await registerUserRoutes(app, { service: userService, users });
+
+  // ---- Static SPA (single-container deploy; opt-in via STATIC_DIR) ----------
+  if (config.staticDir) {
+    await app.register(fastifyStatic, { root: config.staticDir, wildcard: false });
+    // SPA fallback: any non-/api, non-file GET serves index.html so client-side
+    // routes (e.g. /admin/users) survive a hard refresh. API 404s stay JSON.
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === 'GET' && !req.url.startsWith('/api/')) {
+        return reply.sendFile('index.html');
+      }
+      return reply
+        .code(404)
+        .send({ error: { code: 'not_found', message: 'Not found' } });
+    });
+  }
 
   return app;
 }
