@@ -5,6 +5,10 @@ import { AppShell } from '@/components/AppShell'
 import { LoginPage } from '@/pages/LoginPage'
 import { AvailabilityPage } from '@/pages/AvailabilityPage'
 import { MyBookingsPage } from '@/pages/MyBookingsPage'
+import { AdminLayout } from '@/pages/admin/AdminLayout'
+import { AdminUsersPage } from '@/pages/admin/AdminUsersPage'
+import { AdminLocationsPage } from '@/pages/admin/AdminLocationsPage'
+import { AdminFacilitiesPage } from '@/pages/admin/AdminFacilitiesPage'
 import type { ReactNode } from 'react'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -32,6 +36,12 @@ export default function App() {
       >
         <Route path="/" element={<AvailabilityPage />} />
         <Route path="/my-bookings" element={<MyBookingsPage />} />
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="/admin/users" replace />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="locations" element={<AdminLocationsPage />} />
+          <Route path="facilities" element={<AdminFacilitiesPage />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

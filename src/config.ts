@@ -19,6 +19,9 @@ const ConfigSchema = z.object({
     .union([z.boolean(), z.enum(['true', 'false'])])
     .transform((v) => v === true || v === 'true')
     .default(false),
+  // When set, the API also serves the built SPA from this directory (single-
+  // container deploy). Unset in dev/tests — Vite serves the SPA there.
+  staticDir: z.string().optional(),
   orgDisplayTz: z.string().default('UTC'),
   slotMinutes: z.coerce.number().int().positive().default(15),
   maxDurationMinutes: z.coerce.number().int().positive().default(480),
@@ -35,6 +38,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionSecret: env.SESSION_SECRET,
     sessionSalt: env.SESSION_SALT,
     cookieSecure: env.COOKIE_SECURE,
+    staticDir: env.STATIC_DIR,
     orgDisplayTz: env.ORG_DISPLAY_TZ,
     slotMinutes: env.BOOKING_SLOT_MINUTES,
     maxDurationMinutes: env.BOOKING_MAX_DURATION_MINUTES,

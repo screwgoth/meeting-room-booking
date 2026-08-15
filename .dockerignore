@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.git
+.pgdata
+.pgdata-*
+.venv
+*.log
+coverage
+frontend/dist
+docs
+test
+.env
+.env.local
