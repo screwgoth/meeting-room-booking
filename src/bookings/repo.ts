@@ -30,6 +30,15 @@ export interface InsertBookingInput {
   attendeeCount: number | null;
 }
 
+export interface UpdateBookingInput {
+  id: number;
+  roomId: number;
+  startISO: string;
+  endISO: string;
+  title: string;
+  attendeeCount: number | null;
+}
+
 const SELECT_WITH_LOCATION = `
   SELECT b.id, b.room_id, b.user_id, b.title, b.attendee_count, b.status,
          to_char(lower(b.during) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start,
@@ -82,6 +91,39 @@ export class BookingRepo {
       const { rows } = await client.query<BookingWithLocationRow>(
         `${SELECT_WITH_LOCATION} WHERE b.id = $1`,
         [id],
+      );
+      return rows[0]!;
+    });
+  }
+
+  /**
+   * Edit an own upcoming booking (F11). A reschedule is an overlap-checked
+   * UPDATE: the same booking_no_overlap EXCLUDE constraint (§2) arbitrates the
+   * new (room_id, during) exactly as it does an INSERT — Postgres checks the
+   * updated row against every OTHER confirmed row, so a booking never conflicts
+   * with itself (a pure title/attendee edit, or a shrink/extend on the same
+   * room, can't collide). No pre-lock; a 23P01 propagates for the service to
+   * map to 409. Guarded on status='confirmed' so it can't resurrect a cancelled
+   * booking or race a concurrent cancel. Returns null if no confirmed row
+   * matched (already cancelled between the service's read and this write).
+   */
+  async updateBooking(input: UpdateBookingInput): Promise<BookingWithLocationRow | null> {
+    return this.db.tx(async (client) => {
+      const updated = await client.query<{ id: number }>(
+        `UPDATE booking
+            SET room_id = $2,
+                during = tstzrange($3::timestamptz, $4::timestamptz, '[)'),
+                title = $5,
+                attendee_count = $6,
+                updated_at = now()
+          WHERE id = $1 AND status = 'confirmed'
+          RETURNING id`,
+        [input.id, input.roomId, input.startISO, input.endISO, input.title, input.attendeeCount],
+      );
+      if (!updated.rows[0]) return null;
+      const { rows } = await client.query<BookingWithLocationRow>(
+        `${SELECT_WITH_LOCATION} WHERE b.id = $1`,
+        [input.id],
       );
       return rows[0]!;
     });

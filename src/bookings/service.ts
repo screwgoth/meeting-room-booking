@@ -108,6 +108,71 @@ export class BookingService {
     return { booking: serializeBooking(row), warnings };
   }
 
+  /**
+   * Edit an own upcoming booking (F11): change room/time/title/attendees,
+   * re-validated against conflicts. Mirrors create's validation, then relies on
+   * the same EXCLUDE constraint (§2) as the overlap guarantee on the UPDATE —
+   * 23P01 → 409. Owner-only: an employee edits their own booking; admin bulk
+   * management is F10 (a separate slice). Only confirmed, not-yet-ended
+   * bookings are editable — a cancelled or past booking is history.
+   */
+  async update(
+    principal: Principal,
+    id: number,
+    input: CreateBookingInput,
+  ): Promise<{ booking: Booking; warnings: BookingWarning[] }> {
+    const existing = await this.repo.getById(id);
+    if (!existing) throw new NotFoundError('Booking not found');
+    if (existing.user_id !== principal.id) {
+      throw new ForbiddenError('You can only edit your own bookings');
+    }
+    if (existing.status !== 'confirmed') {
+      throw new ConflictError('Cannot edit a cancelled booking');
+    }
+    if (new Date(existing.end).getTime() <= Date.now()) {
+      throw new ConflictError('Cannot edit a booking that has already ended');
+    }
+
+    // Re-validate the new window (grid / past / horizon / duration) → 422 first.
+    validateBookingWindow(input.startISO, input.endISO, this.policy);
+
+    const room = await this.repo.getRoomForBooking(input.roomId);
+    if (!room || !room.is_active) {
+      throw new ValidationError('Room does not exist or is not active');
+    }
+
+    const warnings: BookingWarning[] = [];
+    if (input.attendeeCount !== null && input.attendeeCount > room.capacity) {
+      warnings.push({
+        code: 'attendees_over_capacity',
+        message: `Room seats ${room.capacity}, but you entered ${input.attendeeCount} attendees.`,
+      });
+    }
+
+    let row: BookingWithLocationRow | null;
+    try {
+      row = await this.repo.updateBooking({
+        id,
+        roomId: input.roomId,
+        startISO: input.startISO,
+        endISO: input.endISO,
+        title: input.title,
+        attendeeCount: input.attendeeCount,
+      });
+    } catch (err) {
+      if (isPgError(err) && err.code === SQLSTATE_EXCLUSION_VIOLATION) {
+        throw new ConflictError('That room was just taken for the selected time.');
+      }
+      throw err;
+    }
+    if (!row) {
+      // Lost a race with a concurrent cancel between our read and the update.
+      throw new ConflictError('Booking is no longer active');
+    }
+
+    return { booking: serializeBooking(row), warnings };
+  }
+
   async myBookings(userId: number): Promise<{ upcoming: Booking[]; past: Booking[] }> {
     const [upcoming, past] = await Promise.all([
       this.repo.listUpcoming(userId),

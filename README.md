@@ -11,7 +11,7 @@ multi-office organization.
 - Employees pick an office (optional floor), filter by time / capacity / facilities,
   and see availability on a **fixed 15-minute grid**.
 - Book a contiguous block of 15-min slots — **guaranteed conflict-free** (server-side atomic guarantee).
-- My Bookings: view + cancel.
+- My Bookings: view, edit (reschedule room/time, re-validated against conflicts), and cancel.
 
 Single display timezone for MVP (per-office timezone is v2). Advanced features
 (recurring, approvals, no-show/check-in, calendar sync, notifications, analytics) are v2/v3.

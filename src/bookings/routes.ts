@@ -14,6 +14,10 @@ const CreateBooking = z.object({
   attendee_count: z.number().int().positive().nullable().optional(),
 });
 
+// F11 edit: the form re-submits the full mutable set (room/time/title/attendees),
+// re-validated against conflicts. Same shape as create.
+const EditBooking = CreateBooking;
+
 const CancelBody = z
   .object({ reason: z.string().trim().max(500).optional() })
   .optional();
@@ -43,6 +47,20 @@ export async function registerBookingRoutes(
     });
     reply.code(201);
     return result;
+  });
+
+  // Edit an own upcoming booking (F11) — re-validated against conflicts.
+  // 200 on success; 403 non-owner; 404 missing; 409 overlap/cancelled/ended; 422 grid.
+  app.patch('/api/bookings/:id', { preHandler: authed }, async (req) => {
+    const id = Id.parse((req.params as Record<string, unknown>).id);
+    const b = EditBooking.parse(req.body);
+    return service.update(req.principal!, id, {
+      roomId: b.room_id,
+      startISO: b.start,
+      endISO: b.end,
+      title: b.title,
+      attendeeCount: b.attendee_count ?? null,
+    });
   });
 
   // My bookings (#8) — upcoming + past for the authenticated user.
